@@ -1,9 +1,6 @@
 import React from "react";
+import "setimmediate";
 import validateFormData from "./validate";
-import fill from "core-js/library/fn/array/fill";
-
-export const ADDITIONAL_PROPERTY_FLAG = "__additional_property";
-
 
 const widgetMap = {
   boolean: {
@@ -158,8 +155,9 @@ function computeDefaults(schema, parentDefaults, definitions = {}) {
           if (schema.minItems > defaultsLength) {
             const defaultEntries = defaults || [];
             // populate the array with the defaults
-            const fillerEntries = fill(
-              new Array(schema.minItems - defaultsLength),
+            const fillerEntries = new Array(
+              schema.minItems - defaultsLength
+            ).fill(
               computeDefaults(schema.items, schema.items.defaults, definitions)
             );
             // then fill up the rest with either the item default or empty, up to minItems
@@ -405,52 +403,7 @@ function findSchemaDefinition($ref, definitions = {}) {
   throw new Error(`Could not find a definition for ${$ref}.`);
 }
 
-const guessType = function guessType(value) {
-  if (Array.isArray(value)) {
-    return "array";
-  } else if (typeof value === "string") {
-    return "string";
-  } else if (value == null) {
-    return "null";
-  } else if (typeof value === "boolean") {
-    return "boolean";
-  } else if (!isNaN(value)) {
-    return "number";
-  } else if (typeof value === "object") {
-    return "object";
-  }
-  // Default to string if we can't figure it out
-  return "string";
-};
- // This function will create new "properties" items for each key in our formData
-export function stubExistingAdditionalProperties(
-  schema,
-  definitions = {},
-  formData = {}
-) {
-  // Clone the schema so we don't ruin the consumer's original
-  schema = {
-    ...schema,
-    properties: { ...schema.properties },
-  };
-  Object.keys(formData).forEach(key => {
-    if (schema.properties.hasOwnProperty(key)) {
-      // No need to stub, our schema already has the property
-      return;
-    }
-    const additionalProperties = schema.additionalProperties.hasOwnProperty(
-      "type"
-    )
-      ? { ...schema.additionalProperties }
-      : { type: guessType(formData[key]) };
-    // The type of our new key should match the additionalProperties value;
-    schema.properties[key] = additionalProperties;
-    // Set our additional property flag so we know it was dynamically added
-    schema.properties[key][ADDITIONAL_PROPERTY_FLAG] = true;
-  });
-  return schema;
-}
- export function resolveSchema(schema, definitions = {}, formData = {}) {
+export function retrieveSchema(schema, definitions = {}, formData = {}) {
   if (schema.hasOwnProperty("$ref")) {
     // Retrieve the referenced schema definition.
     const $refSchema = findSchemaDefinition(schema.$ref, definitions);
@@ -465,25 +418,51 @@ export function stubExistingAdditionalProperties(
   } else if (schema.hasOwnProperty("dependencies")) {
     const resolvedSchema = resolveDependencies(schema, definitions, formData);
     return retrieveSchema(resolvedSchema, definitions, formData);
+  } else if (schema.if || schema.then || schema.else) {
+    // Extract if/then/else and capture the remaining schema to be returned
+    const {
+      if: ifSchema,
+      then: thenSchema,
+      else: elseSchema,
+      ...remainingSchema
+    } = schema;
+    if (isObject(ifSchema)) {
+      // The `if` schema is defined and is an object, validate against it
+      const { errors } = validateFormData(formData, ifSchema);
+      // If the form data validates then use the `then` schema; otherwise the `else` schema
+      const conditionalSchema = errors.length === 0 ? thenSchema : elseSchema;
+      // Merge the conditional schema (or an empty schema if undefined) with the remaining schema
+      const updatedSchema = mergeSchemas(
+        remainingSchema,
+        conditionalSchema || {}
+      );
+      return retrieveSchema(updatedSchema, definitions, formData);
+    } else {
+      // Use the remaining schema without merging anything with it
+      // Note that the remaining schema no longer contains any `then` or `else` schemas
+      // This is important so that and `if` schema that gets merged into the schema
+      // from a schema dependency or another if/then/else does not trigger an
+      // orphaned `then` or `else` schema.
+      return retrieveSchema(remainingSchema, definitions, formData);
+    }
   } else {
-    // No $ref or dependencies attribute found, returning the original schema.
+    /* No $ref, dependencies, or if/then/else attribute found, returning the original schema. */
+    // deep clone the schema before possibly mutating it
+    schema = JSON.parse(JSON.stringify(schema));
+    if (schema.type === "object" && isObject(schema.properties)) {
+      // delete any properties in the formData if their schemas contain
+      // `"not": {}` and remove `not` from any property schemas so that no
+      // attempts are made to render them
+      for (const propertyKey of Object.keys(schema.properties)) {
+        const propertySchema = schema.properties[propertyKey];
+        if (deepEquals(propertySchema.not, {})) {
+          delete formData[propertyKey];
+        }
+        delete propertySchema.not;
+      }
+    }
     return schema;
   }
-}
-
-export function retrieveSchema(schema, definitions = {}, formData = {}) {
-  const resolvedSchema = resolveSchema(schema, definitions, formData);
-  const hasAdditionalProperties =
-    resolvedSchema.hasOwnProperty("additionalProperties") &&
-    resolvedSchema.hasAdditionalProperties !== false;
-  if (hasAdditionalProperties) {
-    return stubExistingAdditionalProperties(
-      resolvedSchema,
-      definitions,
-      formData
-    );
-  }
-  return resolvedSchema;
 }
 
 function resolveDependencies(schema, definitions, formData) {
