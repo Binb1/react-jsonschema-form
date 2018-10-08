@@ -1,8 +1,10 @@
 import React from "react";
 import "setimmediate";
 import validateFormData from "./validate";
-import fill from "core-js/library/fn/array/fill";	
- export const ADDITIONAL_PROPERTY_FLAG = "__additional_property";
+import fill from "core-js/library/fn/array/fill";
+
+export const ADDITIONAL_PROPERTY_FLAG = "__additional_property";
+
 
 const widgetMap = {
   boolean: {
@@ -404,52 +406,52 @@ function findSchemaDefinition($ref, definitions = {}) {
   throw new Error(`Could not find a definition for ${$ref}.`);
 }
 
-const guessType = function guessType(value) {	
-  if (Array.isArray(value)) {	
-    return "array";	
-  } else if (typeof value === "string") {	
-    return "string";	
-  } else if (value == null) {	
-    return "null";	
-  } else if (typeof value === "boolean") {	
-    return "boolean";	
-  } else if (!isNaN(value)) {	
-    return "number";	
-  } else if (typeof value === "object") {	
-    return "object";	
-  }	
-  // Default to string if we can't figure it out	
-  return "string";	
-};	
- // This function will create new "properties" items for each key in our formData	
-export function stubExistingAdditionalProperties(	
-  schema,	
-  definitions = {},	
-  formData = {}	
-) {	
-  // Clone the schema so we don't ruin the consumer's original	
-  schema = {	
-    ...schema,	
-    properties: { ...schema.properties },	
-  };	
-  Object.keys(formData).forEach(key => {	
-    if (schema.properties.hasOwnProperty(key)) {	
-      // No need to stub, our schema already has the property	
-      return;	
-    }	
-    const additionalProperties = schema.additionalProperties.hasOwnProperty(	
-      "type"	
-    )	
-      ? { ...schema.additionalProperties }	
-      : { type: guessType(formData[key]) };	
-    // The type of our new key should match the additionalProperties value;	
-    schema.properties[key] = additionalProperties;	
-    // Set our additional property flag so we know it was dynamically added	
-    schema.properties[key][ADDITIONAL_PROPERTY_FLAG] = true;	
-  });	
-  return schema;	
-}	
- export function resolveSchema(schema, definitions = {}, formData = {}) {
+const guessType = function guessType(value) {
+  if (Array.isArray(value)) {
+    return "array";
+  } else if (typeof value === "string") {
+    return "string";
+  } else if (value == null) {
+    return "null";
+  } else if (typeof value === "boolean") {
+    return "boolean";
+  } else if (!isNaN(value)) {
+    return "number";
+  } else if (typeof value === "object") {
+    return "object";
+  }
+  // Default to string if we can't figure it out
+  return "string";
+};
+// This function will create new "properties" items for each key in our formData
+export function stubExistingAdditionalProperties(
+  schema,
+  definitions = {},
+  formData = {}
+) {
+  // Clone the schema so we don't ruin the consumer's original
+  schema = {
+    ...schema,
+    properties: { ...schema.properties },
+  };
+  Object.keys(formData).forEach(key => {
+    if (schema.properties.hasOwnProperty(key)) {
+      // No need to stub, our schema already has the property
+      return;
+    }
+    const additionalProperties = schema.additionalProperties.hasOwnProperty(
+      "type"
+    )
+      ? { ...schema.additionalProperties }
+      : { type: guessType(formData[key]) };
+    // The type of our new key should match the additionalProperties value;
+    schema.properties[key] = additionalProperties;
+    // Set our additional property flag so we know it was dynamically added
+    schema.properties[key][ADDITIONAL_PROPERTY_FLAG] = true;
+  });
+  return schema;
+}
+export function resolveSchema(schema, definitions = {}, formData = {}) {
   if (schema.hasOwnProperty("$ref")) {
     // Retrieve the referenced schema definition.
     const $refSchema = findSchemaDefinition(schema.$ref, definitions);
@@ -464,6 +466,23 @@ export function stubExistingAdditionalProperties(
   } else if (schema.hasOwnProperty("dependencies")) {
     const resolvedSchema = resolveDependencies(schema, definitions, formData);
     return retrieveSchema(resolvedSchema, definitions, formData);
+  } else {
+    // No $ref or dependencies attribute found, returning the original schema.
+    return schema;
+  }
+}
+
+export function retrieveSchema(schema, definitions = {}, formData = {}) {
+  const resolvedSchema = resolveSchema(schema, definitions, formData);
+  const hasAdditionalProperties =
+    resolvedSchema.hasOwnProperty("additionalProperties") &&
+    resolvedSchema.hasAdditionalProperties !== false;
+  if (hasAdditionalProperties) {
+    return stubExistingAdditionalProperties(
+      resolvedSchema,
+      definitions,
+      formData
+    );
   } else if (schema.if || schema.then || schema.else) {
     // Extract if/then/else and capture the remaining schema to be returned
     const {
@@ -492,7 +511,7 @@ export function stubExistingAdditionalProperties(
       return retrieveSchema(remainingSchema, definitions, formData);
     }
   } else {
-    /* No $ref, dependencies, or if/then/else attribute found, returning the original schema. */
+    // No $ref or dependencies attribute found, returning the original schema.	    /* No $ref, dependencies, or if/then/else attribute found, returning the original schema. */
     // deep clone the schema before possibly mutating it
     schema = JSON.parse(JSON.stringify(schema));
     if (schema.type === "object" && isObject(schema.properties)) {
@@ -507,350 +526,334 @@ export function stubExistingAdditionalProperties(
         delete propertySchema.not;
       }
     }
-    return schema;
+    return resolvedSchema
   }
 }
 
-export function retrieveSchema(schema, definitions = {}, formData = {}) {	
-  const resolvedSchema = resolveSchema(schema, definitions, formData);	
-  const hasAdditionalProperties =	
-    resolvedSchema.hasOwnProperty("additionalProperties") &&	
-    resolvedSchema.hasAdditionalProperties !== false;	
-  if (hasAdditionalProperties) {	
-    return stubExistingAdditionalProperties(	
-      resolvedSchema,	
-      definitions,	
-      formData	
-    );	
-  }	
-  return resolvedSchema;	
-}	
-
-
-function resolveDependencies(schema, definitions, formData) {
-  // Drop the dependencies from the source schema.
-  let { dependencies = {}, ...resolvedSchema } = schema;
-  // Process dependencies updating the local schema properties as appropriate.
-  for (const dependencyKey in dependencies) {
-    // Skip this dependency if its trigger property is not present.
-    if (formData[dependencyKey] === undefined) {
-      continue;
+  function resolveDependencies(schema, definitions, formData) {
+    // Drop the dependencies from the source schema.
+    let { dependencies = {}, ...resolvedSchema } = schema;
+    // Process dependencies updating the local schema properties as appropriate.
+    for (const dependencyKey in dependencies) {
+      // Skip this dependency if its trigger property is not present.
+      if (formData[dependencyKey] === undefined) {
+        continue;
+      }
+      const dependencyValue = dependencies[dependencyKey];
+      if (Array.isArray(dependencyValue)) {
+        resolvedSchema = withDependentProperties(resolvedSchema, dependencyValue);
+      } else if (isObject(dependencyValue)) {
+        resolvedSchema = withDependentSchema(
+          resolvedSchema,
+          definitions,
+          formData,
+          dependencyKey,
+          dependencyValue
+        );
+      }
     }
-    const dependencyValue = dependencies[dependencyKey];
-    if (Array.isArray(dependencyValue)) {
-      resolvedSchema = withDependentProperties(resolvedSchema, dependencyValue);
-    } else if (isObject(dependencyValue)) {
-      resolvedSchema = withDependentSchema(
-        resolvedSchema,
-        definitions,
-        formData,
-        dependencyKey,
-        dependencyValue
-      );
+    return resolvedSchema;
+  }
+
+  function withDependentProperties(schema, additionallyRequired) {
+    if (!additionallyRequired) {
+      return schema;
     }
+    const required = Array.isArray(schema.required)
+      ? Array.from(new Set([...schema.required, ...additionallyRequired]))
+      : additionallyRequired;
+    return { ...schema, required: required };
   }
-  return resolvedSchema;
-}
 
-function withDependentProperties(schema, additionallyRequired) {
-  if (!additionallyRequired) {
-    return schema;
-  }
-  const required = Array.isArray(schema.required)
-    ? Array.from(new Set([...schema.required, ...additionallyRequired]))
-    : additionallyRequired;
-  return { ...schema, required: required };
-}
-
-function withDependentSchema(
-  schema,
-  definitions,
-  formData,
-  dependencyKey,
-  dependencyValue
-) {
-  let { oneOf, ...dependentSchema } = retrieveSchema(
-    dependencyValue,
+  function withDependentSchema(
+    schema,
     definitions,
-    formData
-  );
-  schema = mergeSchemas(schema, dependentSchema);
-  return oneOf === undefined
-    ? schema
-    : withExactlyOneSubschema(
+    formData,
+    dependencyKey,
+    dependencyValue
+  ) {
+    let { oneOf, ...dependentSchema } = retrieveSchema(
+      dependencyValue,
+      definitions,
+      formData
+    );
+    schema = mergeSchemas(schema, dependentSchema);
+    return oneOf === undefined
+      ? schema
+      : withExactlyOneSubschema(
         schema,
         definitions,
         formData,
         dependencyKey,
         oneOf
       );
-}
+  }
 
-function withExactlyOneSubschema(
-  schema,
-  definitions,
-  formData,
-  dependencyKey,
-  oneOf
-) {
-  if (!Array.isArray(oneOf)) {
-    throw new Error(
-      `invalid oneOf: it is some ${typeof oneOf} instead of an array`
-    );
-  }
-  const validSubschemas = oneOf.filter(subschema => {
-    if (!subschema.properties) {
-      return false;
-    }
-    const { [dependencyKey]: conditionPropertySchema } = subschema.properties;
-    if (conditionPropertySchema) {
-      const conditionSchema = {
-        type: "object",
-        properties: {
-          [dependencyKey]: conditionPropertySchema,
-        },
-      };
-      const { errors } = validateFormData(formData, conditionSchema);
-      return errors.length === 0;
-    }
-  });
-  if (validSubschemas.length !== 1) {
-    console.warn(
-      "ignoring oneOf in dependencies because there isn't exactly one subschema that is valid"
-    );
-    return schema;
-  }
-  const subschema = validSubschemas[0];
-  const {
-    [dependencyKey]: conditionPropertySchema,
-    ...dependentSubschema
-  } = subschema.properties;
-  const dependentSchema = { ...subschema, properties: dependentSubschema };
-  return mergeSchemas(
+  function withExactlyOneSubschema(
     schema,
-    retrieveSchema(dependentSchema, definitions, formData)
-  );
-}
-
-function mergeSchemas(schema1, schema2) {
-  return mergeObjects(schema1, schema2, true);
-}
-
-function isArguments(object) {
-  return Object.prototype.toString.call(object) === "[object Arguments]";
-}
-
-export function deepEquals(a, b, ca = [], cb = []) {
-  // Partially extracted from node-deeper and adapted to exclude comparison
-  // checks for functions.
-  // https://github.com/othiym23/node-deeper
-  if (a === b) {
-    return true;
-  } else if (typeof a === "function" || typeof b === "function") {
-    // Assume all functions are equivalent
-    // see https://github.com/mozilla-services/react-jsonschema-form/issues/255
-    return true;
-  } else if (typeof a !== "object" || typeof b !== "object") {
-    return false;
-  } else if (a === null || b === null) {
-    return false;
-  } else if (a instanceof Date && b instanceof Date) {
-    return a.getTime() === b.getTime();
-  } else if (a instanceof RegExp && b instanceof RegExp) {
-    return (
-      a.source === b.source &&
-      a.global === b.global &&
-      a.multiline === b.multiline &&
-      a.lastIndex === b.lastIndex &&
-      a.ignoreCase === b.ignoreCase
+    definitions,
+    formData,
+    dependencyKey,
+    oneOf
+  ) {
+    if (!Array.isArray(oneOf)) {
+      throw new Error(
+        `invalid oneOf: it is some ${typeof oneOf} instead of an array`
+      );
+    }
+    const validSubschemas = oneOf.filter(subschema => {
+      if (!subschema.properties) {
+        return false;
+      }
+      const { [dependencyKey]: conditionPropertySchema } = subschema.properties;
+      if (conditionPropertySchema) {
+        const conditionSchema = {
+          type: "object",
+          properties: {
+            [dependencyKey]: conditionPropertySchema,
+          },
+        };
+        const { errors } = validateFormData(formData, conditionSchema);
+        return errors.length === 0;
+      }
+    });
+    if (validSubschemas.length !== 1) {
+      console.warn(
+        "ignoring oneOf in dependencies because there isn't exactly one subschema that is valid"
+      );
+      return schema;
+    }
+    const subschema = validSubschemas[0];
+    const {
+      [dependencyKey]: conditionPropertySchema,
+      ...dependentSubschema
+    } = subschema.properties;
+    const dependentSchema = { ...subschema, properties: dependentSubschema };
+    return mergeSchemas(
+      schema,
+      retrieveSchema(dependentSchema, definitions, formData)
     );
-  } else if (isArguments(a) || isArguments(b)) {
-    if (!(isArguments(a) && isArguments(b))) {
-      return false;
-    }
-    let slice = Array.prototype.slice;
-    return deepEquals(slice.call(a), slice.call(b), ca, cb);
-  } else {
-    if (a.constructor !== b.constructor) {
-      return false;
-    }
+  }
 
-    let ka = Object.keys(a);
-    let kb = Object.keys(b);
-    // don't bother with stack acrobatics if there's nothing there
-    if (ka.length === 0 && kb.length === 0) {
+  function mergeSchemas(schema1, schema2) {
+    return mergeObjects(schema1, schema2, true);
+  }
+
+  function isArguments(object) {
+    return Object.prototype.toString.call(object) === "[object Arguments]";
+  }
+
+  export function deepEquals(a, b, ca = [], cb = []) {
+    // Partially extracted from node-deeper and adapted to exclude comparison
+    // checks for functions.
+    // https://github.com/othiym23/node-deeper
+    if (a === b) {
+      return true;
+    } else if (typeof a === "function" || typeof b === "function") {
+      // Assume all functions are equivalent
+      // see https://github.com/mozilla-services/react-jsonschema-form/issues/255
+      return true;
+    } else if (typeof a !== "object" || typeof b !== "object") {
+      return false;
+    } else if (a === null || b === null) {
+      return false;
+    } else if (a instanceof Date && b instanceof Date) {
+      return a.getTime() === b.getTime();
+    } else if (a instanceof RegExp && b instanceof RegExp) {
+      return (
+        a.source === b.source &&
+        a.global === b.global &&
+        a.multiline === b.multiline &&
+        a.lastIndex === b.lastIndex &&
+        a.ignoreCase === b.ignoreCase
+      );
+    } else if (isArguments(a) || isArguments(b)) {
+      if (!(isArguments(a) && isArguments(b))) {
+        return false;
+      }
+      let slice = Array.prototype.slice;
+      return deepEquals(slice.call(a), slice.call(b), ca, cb);
+    } else {
+      if (a.constructor !== b.constructor) {
+        return false;
+      }
+
+      let ka = Object.keys(a);
+      let kb = Object.keys(b);
+      // don't bother with stack acrobatics if there's nothing there
+      if (ka.length === 0 && kb.length === 0) {
+        return true;
+      }
+      if (ka.length !== kb.length) {
+        return false;
+      }
+
+      let cal = ca.length;
+      while (cal--) {
+        if (ca[cal] === a) {
+          return cb[cal] === b;
+        }
+      }
+      ca.push(a);
+      cb.push(b);
+
+      ka.sort();
+      kb.sort();
+      for (var j = ka.length - 1; j >= 0; j--) {
+        if (ka[j] !== kb[j]) {
+          return false;
+        }
+      }
+
+      let key;
+      for (let k = ka.length - 1; k >= 0; k--) {
+        key = ka[k];
+        if (!deepEquals(a[key], b[key], ca, cb)) {
+          return false;
+        }
+      }
+
+      ca.pop();
+      cb.pop();
+
       return true;
     }
-    if (ka.length !== kb.length) {
-      return false;
-    }
-
-    let cal = ca.length;
-    while (cal--) {
-      if (ca[cal] === a) {
-        return cb[cal] === b;
-      }
-    }
-    ca.push(a);
-    cb.push(b);
-
-    ka.sort();
-    kb.sort();
-    for (var j = ka.length - 1; j >= 0; j--) {
-      if (ka[j] !== kb[j]) {
-        return false;
-      }
-    }
-
-    let key;
-    for (let k = ka.length - 1; k >= 0; k--) {
-      key = ka[k];
-      if (!deepEquals(a[key], b[key], ca, cb)) {
-        return false;
-      }
-    }
-
-    ca.pop();
-    cb.pop();
-
-    return true;
   }
-}
 
-export function shouldRender(comp, nextProps, nextState) {
-  const { props, state } = comp;
-  return !deepEquals(props, nextProps) || !deepEquals(state, nextState);
-}
+  export function shouldRender(comp, nextProps, nextState) {
+    const { props, state } = comp;
+    return !deepEquals(props, nextProps) || !deepEquals(state, nextState);
+  }
 
-export function toIdSchema(
-  schema,
-  id,
-  definitions,
-  formData = {},
-  idPrefix = "root"
-) {
-  const idSchema = {
-    $id: id || idPrefix,
-  };
-  if ("$ref" in schema) {
-    const _schema = retrieveSchema(schema, definitions, formData);
-    return toIdSchema(_schema, id, definitions, formData, idPrefix);
-  }
-  if ("items" in schema && !schema.items.$ref) {
-    return toIdSchema(schema.items, id, definitions, formData, idPrefix);
-  }
-  if (schema.type !== "object") {
+  export function toIdSchema(
+    schema,
+    id,
+    definitions,
+    formData = {},
+    idPrefix = "root"
+  ) {
+    const idSchema = {
+      $id: id || idPrefix,
+    };
+    if ("$ref" in schema) {
+      const _schema = retrieveSchema(schema, definitions, formData);
+      return toIdSchema(_schema, id, definitions, formData, idPrefix);
+    }
+    if ("items" in schema && !schema.items.$ref) {
+      return toIdSchema(schema.items, id, definitions, formData, idPrefix);
+    }
+    if (schema.type !== "object") {
+      return idSchema;
+    }
+    for (const name in schema.properties || {}) {
+      const field = schema.properties[name];
+      const fieldId = idSchema.$id + "_" + name;
+      idSchema[name] = toIdSchema(
+        field,
+        fieldId,
+        definitions,
+        formData[name],
+        idPrefix
+      );
+    }
     return idSchema;
   }
-  for (const name in schema.properties || {}) {
-    const field = schema.properties[name];
-    const fieldId = idSchema.$id + "_" + name;
-    idSchema[name] = toIdSchema(
-      field,
-      fieldId,
-      definitions,
-      formData[name],
-      idPrefix
-    );
-  }
-  return idSchema;
-}
 
-export function parseDateString(dateString, includeTime = true) {
-  if (!dateString) {
+  export function parseDateString(dateString, includeTime = true) {
+    if (!dateString) {
+      return {
+        year: -1,
+        month: -1,
+        day: -1,
+        hour: includeTime ? -1 : 0,
+        minute: includeTime ? -1 : 0,
+        second: includeTime ? -1 : 0,
+      };
+    }
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Unable to parse date " + dateString);
+    }
     return {
-      year: -1,
-      month: -1,
-      day: -1,
-      hour: includeTime ? -1 : 0,
-      minute: includeTime ? -1 : 0,
-      second: includeTime ? -1 : 0,
+      year: date.getUTCFullYear(),
+      month: date.getUTCMonth() + 1, // oh you, javascript.
+      day: date.getUTCDate(),
+      hour: includeTime ? date.getUTCHours() : 0,
+      minute: includeTime ? date.getUTCMinutes() : 0,
+      second: includeTime ? date.getUTCSeconds() : 0,
     };
   }
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Unable to parse date " + dateString);
-  }
-  return {
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1, // oh you, javascript.
-    day: date.getUTCDate(),
-    hour: includeTime ? date.getUTCHours() : 0,
-    minute: includeTime ? date.getUTCMinutes() : 0,
-    second: includeTime ? date.getUTCSeconds() : 0,
-  };
-}
 
-export function toDateString(
-  { year, month, day, hour = 0, minute = 0, second = 0 },
-  time = true
-) {
-  const utcTime = Date.UTC(year, month - 1, day, hour, minute, second);
-  const datetime = new Date(utcTime).toJSON();
-  return time ? datetime : datetime.slice(0, 10);
-}
-
-export function pad(num, size) {
-  let s = String(num);
-  while (s.length < size) {
-    s = "0" + s;
-  }
-  return s;
-}
-
-export function setState(instance, state, callback) {
-  const { safeRenderCompletion } = instance.props;
-  if (safeRenderCompletion) {
-    instance.setState(state, callback);
-  } else {
-    instance.setState(state);
-    setImmediate(callback);
-  }
-}
-
-export function dataURItoBlob(dataURI) {
-  // Split metadata from data
-  const splitted = dataURI.split(",");
-  // Split params
-  const params = splitted[0].split(";");
-  // Get mime-type from params
-  const type = params[0].replace("data:", "");
-  // Filter the name property from params
-  const properties = params.filter(param => {
-    return param.split("=")[0] === "name";
-  });
-  // Look for the name and use unknown if no name property.
-  let name;
-  if (properties.length !== 1) {
-    name = "unknown";
-  } else {
-    // Because we filtered out the other property,
-    // we only have the name case here.
-    name = properties[0].split("=")[1];
+  export function toDateString(
+    { year, month, day, hour = 0, minute = 0, second = 0 },
+    time = true
+  ) {
+    const utcTime = Date.UTC(year, month - 1, day, hour, minute, second);
+    const datetime = new Date(utcTime).toJSON();
+    return time ? datetime : datetime.slice(0, 10);
   }
 
-  // Built the Uint8Array Blob parameter from the base64 string.
-  const binary = atob(splitted[1]);
-  const array = [];
-  for (let i = 0; i < binary.length; i++) {
-    array.push(binary.charCodeAt(i));
+  export function pad(num, size) {
+    let s = String(num);
+    while (s.length < size) {
+      s = "0" + s;
+    }
+    return s;
   }
-  // Create the blob object
-  const blob = new window.Blob([new Uint8Array(array)], { type });
 
-  return { blob, name };
-}
+  export function setState(instance, state, callback) {
+    const { safeRenderCompletion } = instance.props;
+    if (safeRenderCompletion) {
+      instance.setState(state, callback);
+    } else {
+      instance.setState(state);
+      setImmediate(callback);
+    }
+  }
 
-export function rangeSpec(schema) {
-  const spec = {};
-  if (schema.multipleOf) {
-    spec.step = schema.multipleOf;
+  export function dataURItoBlob(dataURI) {
+    // Split metadata from data
+    const splitted = dataURI.split(",");
+    // Split params
+    const params = splitted[0].split(";");
+    // Get mime-type from params
+    const type = params[0].replace("data:", "");
+    // Filter the name property from params
+    const properties = params.filter(param => {
+      return param.split("=")[0] === "name";
+    });
+    // Look for the name and use unknown if no name property.
+    let name;
+    if (properties.length !== 1) {
+      name = "unknown";
+    } else {
+      // Because we filtered out the other property,
+      // we only have the name case here.
+      name = properties[0].split("=")[1];
+    }
+
+    // Built the Uint8Array Blob parameter from the base64 string.
+    const binary = atob(splitted[1]);
+    const array = [];
+    for (let i = 0; i < binary.length; i++) {
+      array.push(binary.charCodeAt(i));
+    }
+    // Create the blob object
+    const blob = new window.Blob([new Uint8Array(array)], { type });
+
+    return { blob, name };
   }
-  if (schema.minimum || schema.minimum === 0) {
-    spec.min = schema.minimum;
+
+  export function rangeSpec(schema) {
+    const spec = {};
+    if (schema.multipleOf) {
+      spec.step = schema.multipleOf;
+    }
+    if (schema.minimum || schema.minimum === 0) {
+      spec.min = schema.minimum;
+    }
+    if (schema.maximum || schema.maximum === 0) {
+      spec.max = schema.maximum;
+    }
+    return spec;
   }
-  if (schema.maximum || schema.maximum === 0) {
-    spec.max = schema.maximum;
-  }
-  return spec;
-}
